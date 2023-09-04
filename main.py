@@ -18,15 +18,21 @@ class Generator(nn.Module):
     def __init__(self):
         super(Generator, self).__init__()
         self.model = nn.Sequential(
-            nn.Linear(z_dim, 128),
-            nn.ReLU(),
-            nn.Linear(128, 256),
-            nn.ReLU(),
-            nn.Linear(256, 3 * 32 * 32),  # Output size for CIFAR-10 images
+            nn.ConvTranspose2d(z_dim, 512, kernel_size=4, stride=1, padding=0),
+            nn.BatchNorm2d(512),
+            nn.ReLU(True),
+            nn.ConvTranspose2d(512, 256, kernel_size=4, stride=2, padding=1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(True),
+            nn.ConvTranspose2d(256, 128, kernel_size=4, stride=2, padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(True),
+            nn.ConvTranspose2d(128, 3, kernel_size=4, stride=2, padding=1),
             nn.Tanh()
         )
-    
+
     def forward(self, x):
+        x = x.view(x.size(0), z_dim, 1, 1)
         return self.model(x)
 
 # Discriminator model
@@ -34,14 +40,18 @@ class Discriminator(nn.Module):
     def __init__(self):
         super(Discriminator, self).__init__()
         self.model = nn.Sequential(
-            nn.Linear(3 * 32 * 32, 256),
-            nn.LeakyReLU(0.2),
-            nn.Linear(256, 128),
-            nn.LeakyReLU(0.2),
-            nn.Linear(128, 1),
+            nn.Conv2d(3, 64, kernel_size=4, stride=2, padding=1),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(64, 128, kernel_size=4, stride=2, padding=1),
+            nn.BatchNorm2d(128),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(128, 256, kernel_size=4, stride=2, padding=1),
+            nn.BatchNorm2d(256),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(256, 1, kernel_size=4, stride=1, padding=0),
             nn.Sigmoid()
         )
-    
+
     def forward(self, x):
         return self.model(x)
 
@@ -55,14 +65,15 @@ optimizer_d = optim.Adam(discriminator.parameters(), lr=learning_rate)
 # Loss function
 criterion = nn.BCELoss()
 
-# Load CelebA dataset
+# Load CIFAR-100 dataset
 transform = transforms.Compose([
-    transforms.Resize(64),
+    transforms.Resize(256),
     transforms.ToTensor(),
-    transforms.Normalize((0.5,), (0.5,))
+    transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
 ])
 
-dataset = torchvision.datasets.CelebA(root='./data', split='train', transform=transform, download=True)
+# Load CIFAR-100 dataset onto dataloader
+dataset = torchvision.datasets.CIFAR100(root='./data', train=True, transform=transform, download=True)
 dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
 # Learning rate scheduling
@@ -110,7 +121,7 @@ for epoch in range(num_epochs):
     if (epoch + 1) % 5 == 0:
         with torch.no_grad():
             z_sample = torch.randn(1, z_dim).to(device)
-            generated_image = generator(z_sample).view(3, 64, 64).cpu().numpy()
+            generated_image = generator(z_sample).view(3, 32, 32).cpu().numpy()
             generated_image = (generated_image + 1) / 2.0  # Denormalize
 
         plt.imshow(generated_image.transpose(1, 2, 0))
